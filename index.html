@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Калькулятор ресурсов для ЛЛМ-агентов (self-hosted)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <style>.number-input{text-align:right}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">Калькулятор ресурсов для ЛЛМ-агентов</h1>
+        <p class="text-sm text-slate-600">Оценка вычислений и стоимости при развёртывании <b>у себя</b> (self-hosted).</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="explainBtn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700">Пояснить расчёт</button>
+        <button id="pdfBtn" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Скачать PDF-отчёт</button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section class="bg-white rounded-2xl shadow p-5">
+        <h2 class="font-semibold mb-3">1) Что хотим посчитать</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="text-sm block mb-1">Тип задачи</label>
+            <select id="preset_complexity" class="border rounded px-2 py-2 w-full">
+              <option value="chat">Простой диалог</option>
+              <option value="agent2" selected>Агент — 2 шага (поиск/инструменты)</option>
+              <option value="agent5">Агент — 4–6 шагов (сложная задача)</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-sm block mb-1">Одновременных пользователей</label><input id="concurrency" type="number" class="number-input border rounded px-2 py-1 w-full" value="100" min="1"></div>
+            <div><label class="text-sm block mb-1">Среднее время ответа, сек</label><input id="latency" type="number" class="number-input border rounded px-2 py-1 w-full" value="3" min="1"></div>
+          </div>
+          <div>
+            <label class="text-sm block mb-1">Производительность сервинга</label>
+            <select id="perf_preset" class="border rounded px-2 py-2 w-full">
+              <option value="base">Обычная (25 ток/с; batching 1.2)</option>
+              <option value="opt" selected>Оптимизированная (80 ток/с; batching 1.6)</option>
+            </select>
+            <p class="text-xs text-slate-500 mt-1">Оптимизация: квантизация/высокоэффективный сервинг (vLLM, continuous batching).</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-2xl shadow p-5">
+        <h2 class="font-semibold mb-3">2) Модель и GPU-парк</h2>
+        <div class="space-y-3">
+          <div><label class="text-sm block mb-1">Модель</label>
+            <select id="model_preset" class="border rounded px-2 py-2 w-full">
+              <option value="7b">7B (лёгкая)</option>
+              <option value="13b">13B (средняя)</option>
+              <option value="34b">34B (тяжёлая)</option>
+              <option value="70b" selected>70B (очень тяжёлая)</option>
+            </select>
+          </div>
+          <div><label class="text-sm block mb-1">Квантование весов</label>
+            <select id="quant" class="border rounded px-2 py-2 w-full">
+              <option value="fp16">FP16/BF16</option>
+              <option value="int8" selected>INT8</option>
+              <option value="int4">4-бит</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-sm block mb-1">Длина контекста (токенов)</label><input id="seq_len" type="number" class="number-input border rounded px-2 py-1 w-full" value="4096" min="512"></div>
+            <div><label class="text-sm block mb-1">Одновременных запросов на 1 GPU (batch)</label><input id="batch" type="number" class="number-input border rounded px-2 py-1 w-full" value="4" min="1"></div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm block mb-1">Модель видеокарты</label>
+              <select id="gpu_model" class="border rounded px-2 py-2 w-full">
+                <option value="A100_80" selected>NVIDIA A100 80GB</option>
+                <option value="H100_80">NVIDIA H100 80GB</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm block mb-1">Количество GPU (доступно)</label>
+              <input id="gpu_available" type="number" class="number-input border rounded px-2 py-1 w-full" value="8" min="1">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-sm block mb-1">Объём VRAM на карте (ГБ)</label>
+              <select id="gpu_mem_cap" class="border rounded px-2 py-2 w-full"><option>24</option><option>40</option><option>48</option><option selected>80</option></select>
+            </div>
+            <div><label class="text-sm block mb-1">Цена 1 GPU, $/час</label><input id="gpu_price" type="number" class="number-input border rounded px-2 py-1 w-full" value="2.0" step="0.1"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="mt-6 bg-white rounded-2xl shadow p-5">
+      <h2 class="font-semibold mb-4">Результаты (self-hosted)</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Токены на задачу</div><div id="t_task_out" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Задач в секунду (RPS)</div><div id="rps_out" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Нужный токенный поток (TPS)</div><div id="tps_out" class="text-2xl font-semibold">—</div></div>
+
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">VRAM веса (GB)</div><div id="vram_weights" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">VRAM под контекст (KV) (GB)</div><div id="vram_kv" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Итого VRAM на 1 GPU (GB)</div><div id="vram_total" class="text-2xl font-semibold">—</div></div>
+
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Влезает в выбранную карту?</div><div id="fit_flag" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Нужно GPU (шт)</div><div id="gpu_needed" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Есть GPU (шт)</div><div id="gpu_have" class="text-2xl font-semibold">—</div></div>
+
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Достаточно парка?</div><div id="park_ok" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">Не хватает / Запас</div><div id="gap_or_spare" class="text-2xl font-semibold">—</div></div>
+        <div class="p-4 rounded-xl bg-slate-50"><div class="text-xs text-slate-500">$/час (по требуемым GPU)</div><div id="self_cost_hour" class="text-2xl font-semibold">—</div></div>
+      </div>
+    </section>
+
+    <section id="explainBlock" class="mt-6 bg-white rounded-2xl shadow p-5 hidden">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">Пояснение расчёта</h2>
+        <button id="closeExplain" class="text-sm text-slate-500 hover:text-slate-700">Свернуть</button>
+      </div>
+      <pre id="explainText" class="whitespace-pre-wrap text-sm leading-relaxed"></pre>
+    </section>
+
+    <footer class="mt-6 text-xs text-slate-500">
+      Подсказка: выбор модели GPU влияет на скорость (tok/s) и ёмкость памяти.
+    </footer>
+  </div>
+
+<script>
+const modelPresets={'7b':{paramsB:7,L:32,d:4096,tok16:35},'13b':{paramsB:13,L:80,d:5120,tok16:25},'34b':{paramsB:34,L:96,d:8192,tok16:18},'70b':{paramsB:70,L:80,d:12288,tok16:12}};
+const complexity={chat:{steps:0,sys:100,user:100,per_step:0,final:150},agent2:{steps:2,sys:200,user:100,per_step:480,final:200},agent5:{steps:5,sys:250,user:120,per_step:500,final:220}};
+// Relative perf multipliers for GPU models (rough approximation)
+const gpuPerfMult={'A100_80':1.0,'H100_80':1.8};
+const gpuMemCap={'A100_80':80,'H100_80':80};
+
+function perfFromPreset(preset, quant, gpuModel, perfPreset){
+  const quantMult = quant==='fp16'?1:(quant==='int8'?1.5:2.0);
+  const base = preset.tok16 * quantMult;
+  const gpuMult = gpuPerfMult[gpuModel] || 1;
+  const perfMult = (perfPreset==='opt')? (1.6/1.2) : 1; // reflect better batching
+  return base * gpuMult * perfMult; // tok/s per GPU
+}
+function bytesPerParam(quant){return quant==='fp16'?2:(quant==='int8'?1:0.5);} function bytesKV(){return 2;}
+
+function val(id){return document.getElementById(id).value;} function num(id){const v=val(id).trim().replace(',','.');return v===''?NaN:Number(v);} function fmt(n,d=0){if(!isFinite(n))return'—';return Number(n).toLocaleString('ru-RU',{maximumFractionDigits:d,minimumFractionDigits:d});}
+
+function syncGpuMemCap(){
+  const m = val('gpu_model');
+  const cap = gpuMemCap[m];
+  const sel = document.getElementById('gpu_mem_cap');
+  for (let i=0;i<sel.options.length;i++){ if(Number(sel.options[i].value)===cap){ sel.selectedIndex=i; break; } }
+}
+
+function compute(){
+  const cx=complexity[val('preset_complexity')]; const steps=cx.steps,t_sys=cx.sys,t_user=cx.user,per_step=cx.per_step,t_final=cx.final;
+  const concurrency=num('concurrency'), latency=num('latency'); const rps=concurrency/latency;
+  const t_task=t_sys+t_user+steps*per_step+t_final; const tps_needed=rps*t_task;
+
+  const mp=modelPresets[val('model_preset')]; const quant=val('quant'); const seq_len=num('seq_len'); const batch=num('batch');
+  const gpuModel=val('gpu_model'); const perfPreset=val('perf_preset');
+  const tok_per_gpu=perfFromPreset(mp,quant,gpuModel,perfPreset); const batch_coef= perfPreset==='base'?1.2:1.6;
+  const bytes_w=bytesPerParam(quant); const bytes_kv=bytesKV();
+  const vram_weights=mp.paramsB*1e9*bytes_w/(1024**3); const vram_kv=2*mp.L*mp.d*bytes_kv*seq_len*batch/(1024**3);
+  const vram_total=(vram_weights+vram_kv)*1.2; const cap=Number(val('gpu_mem_cap'));
+  const fit=vram_total<=cap?'Да':'Нет';
+
+  const gpu_needed=Math.max(1,Math.ceil(tps_needed/(tok_per_gpu))); // batching effect already in tok_per_gpu via perfPreset
+  const gpu_have=num('gpu_available'); const park_ok = gpu_have>=gpu_needed;
+  const gap = park_ok ? (gpu_have - gpu_needed) : (gpu_needed - gpu_have);
+  const gpu_price=num('gpu_price'); const self_cost_hour=gpu_needed*gpu_price;
+
+  return {steps,t_sys,t_user,per_step,t_final,concurrency,latency,rps,t_task,tps_needed,mp,quant,seq_len,batch,tok_per_gpu,vram_weights,vram_kv,vram_total,cap,fit,gpu_needed,gpu_have,park_ok,gap,self_cost_hour,gpuModel,perfPreset};
+}
+
+function render(){
+  const v=compute();
+  document.getElementById('t_task_out').textContent=fmt(v.t_task,0);
+  document.getElementById('rps_out').textContent=fmt(v.rps,2);
+  document.getElementById('tps_out').textContent=fmt(v.tps_needed,0);
+  document.getElementById('vram_weights').textContent=fmt(v.vram_weights,2);
+  document.getElementById('vram_kv').textContent=fmt(v.vram_kv,2);
+  document.getElementById('vram_total').textContent=fmt(v.vram_total,2);
+  document.getElementById('fit_flag').textContent=v.fit;
+  document.getElementById('gpu_needed').textContent=fmt(v.gpu_needed,0);
+  document.getElementById('gpu_have').textContent=fmt(v.gpu_have,0);
+  document.getElementById('self_cost_hour').textContent=fmt(v.self_cost_hour,2);
+
+  const parkOkEl = document.getElementById('park_ok'); const gapEl = document.getElementById('gap_or_spare');
+  parkOkEl.textContent = v.park_ok ? 'Да' : 'Нет';
+  gapEl.textContent = (v.park_ok ? 'Запас: ' : 'Не хватает: ') + fmt(v.gap,0) + ' GPU';
+
+  // color cues
+  const fitBox=document.getElementById('fit_flag').parentElement;
+  fitBox.classList.remove('bg-rose-100','bg-emerald-100'); fitBox.classList.add(v.fit==='Да'?'bg-emerald-100':'bg-rose-100');
+  const parkBox=parkOkEl.parentElement;
+  parkBox.classList.remove('bg-rose-100','bg-emerald-100'); parkBox.classList.add(v.park_ok?'bg-emerald-100':'bg-rose-100');
+}
+
+function explanationText(){
+  const v=compute(); const a=[];
+  a.push(`Тип задачи: ${document.getElementById('preset_complexity').selectedOptions[0].text}. Модель: ${document.getElementById('model_preset').selectedOptions[0].text}, квантование ${v.quant}. GPU: ${document.getElementById('gpu_model').selectedOptions[0].text}.`);
+  a.push(`Токены на задачу = system + user + шаги×(план+запрос+ответ инструмента+рассуждения) + финал.`);
+  a.push(`Подставили: ${v.t_sys} + ${v.t_user} + ${v.steps}×(${v.per_step}) + ${v.t_final} = ${Math.round(v.t_task)} токенов.`); a.push('');
+  a.push(`Нагрузка: RPS = пользователи / время ответа = ${v.concurrency} / ${v.latency} = ${v.rps.toFixed(2)} задач/сек.`);
+  a.push(`Поток токенов = RPS × T_task = ${v.rps.toFixed(2)} × ${Math.round(v.t_task)} = ${Math.round(v.tps_needed)} ток/сек.`); a.push('');
+  a.push(`Скорость 1 GPU ≈ ${Math.round(v.tok_per_gpu)} ток/сек (учтены квантование и сервинг).`);
+  a.push(`Нужно GPU = ceil(поток / скорость_на_GPU) = ${Math.round(v.tps_needed)} / ${Math.round(v.tok_per_gpu)} = ${v.gpu_needed}.`);
+  a.push(`В парке есть: ${v.gpu_have} шт → ${v.park_ok?'достаточно':'не хватает'} (${v.park_ok?'запас':'дефицит'}: ${v.gap}).`); a.push('');
+  a.push(`Память на 1 GPU: веса ${v.vram_weights.toFixed(2)} GB; контекст (KV) ${v.vram_kv.toFixed(2)} GB; всего ${v.vram_total.toFixed(2)} GB → влезает: ${v.fit} (карта ${v.cap} GB).`);
+  a.push(`Стоимость по требуемым GPU: ${v.gpu_needed} × ${num('gpu_price')} $/ч = ${v.self_cost_hour.toFixed(2)} $/ч.`);
+  a.push('Практические рычаги: уменьшить контекст, кэшировать, квантовать сильнее, улучшить сервинг (vLLM), сократить шаги агента.');
+  return a.join('\n');
+}
+
+document.getElementById('gpu_model').addEventListener('change', ()=>{ syncGpuMemCap(); render(); });
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
+
+document.getElementById('explainBtn').addEventListener('click',()=>{render();document.getElementById('explainText').textContent=explanationText();document.getElementById('explainBlock').classList.remove('hidden');window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});});
+document.getElementById('closeExplain').addEventListener('click',()=>document.getElementById('explainBlock').classList.add('hidden'));
+
+document.getElementById('pdfBtn').addEventListener('click',()=>{
+  render(); const v=compute(); const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'a4'}); const m=40; let y=m;
+  doc.setFontSize(16); doc.text('Отчёт: расчёт ресурсов для ЛЛМ-агента (self-hosted)',m,y); y+=24;
+  doc.setFontSize(10); doc.setTextColor(100); doc.text('Дата: '+new Date().toLocaleString(),m,y); y+=16; doc.setTextColor(0);
+  doc.setFontSize(12); doc.text('Вводные:',m,y); y+=14; doc.setFontSize(10);
+  doc.text('Тип задачи: '+document.getElementById('preset_complexity').selectedOptions[0].text,m,y); y+=14;
+  doc.text(`Пользователей: ${v.concurrency} · Время ответа: ${v.latency} c`,m,y); y+=14;
+  doc.text(`Модель: ${document.getElementById('model_preset').selectedOptions[0].text} · Квантование: ${v.quant}`,m,y); y+=14;
+  doc.text(`Контекст: ${v.seq_len} ток · Batch: ${v.batch}`,m,y); y+=14;
+  doc.text(`GPU: ${document.getElementById('gpu_model').selectedOptions[0].text} · В парке: ${v.gpu_have} шт · Цена: ${num('gpu_price')} $/ч`,m,y); y+=18;
+  const rows=[['Токены на задачу',Math.round(v.t_task)],['RPS (задач/сек)',v.rps.toFixed(2)],['Нужный токенный поток, ток/сек',Math.round(v.tps_needed)],['Влезает в 1 GPU',v.fit],['VRAM веса, GB',v.vram_weights.toFixed(2)],['VRAM под контекст (KV), GB',v.vram_kv.toFixed(2)],['Итого VRAM на 1 GPU, GB',v.vram_total.toFixed(2)],['Нужно GPU, шт',v.gpu_needed],['Есть GPU, шт',v.gpu_have],['Хватает ли парка',v.park_ok?'Да':'Нет'],['Не хватает/запас, шт',v.gap],['Стоимость в час (по требуемым GPU), $',v.self_cost_hour.toFixed(2)]];
+  doc.autoTable({startY:y,head:[['Метрика','Значение']],body:rows,styles:{fontSize:10}}); y=doc.lastAutoTable.finalY+16;
+  doc.setFontSize(12); doc.text('Пояснение:',m,y); y+=14; doc.setFontSize(10); const expl=explanationText(); const lines=doc.splitTextToSize(expl,515); doc.text(lines,m,y);
+  doc.save('LLM_Agent_SelfHosted_Report.pdf');
+});
+
+syncGpuMemCap(); render();
+</script>
+</body>
+</html>
