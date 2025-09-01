@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Калькулятор ресурсов для ЛЛМ-агентов (self-hosted) — v7</title>
+  <title>Калькулятор ресурсов для ЛЛМ-агентов (self-hosted) — v8</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>.number-input{{text-align:right}}</style>
 </head>
@@ -12,15 +12,14 @@
     <header class="mb-6 flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <h1 class="text-2xl font-bold">Калькулятор ресурсов для ЛЛМ-агентов</h1>
-        <span class="text-xs px-2 py-1 rounded-full bg-violet-600 text-white">v7</span>
+        <span class="text-xs px-2 py-1 rounded-full bg-violet-600 text-white">v8</span>
       </div>
-      <div class="text-xs text-slate-500">Сборка: 2025-09-01 10:40</div>
+      <div class="text-xs text-slate-500">Сборка: 2025-09-01 10:50</div>
     </header>
 
     <p class="text-sm text-slate-600 mb-4">Self-hosted оценка: GPU + базовые ресурсы (CPU, RAM, диск, сеть, серверы). Пояснение всегда видно ниже.</p>
 
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <!-- 1 -->
       <section class="bg-white rounded-2xl shadow p-5 xl:col-span-1">
         <h2 class="font-semibold mb-3">1) Что хотим посчитать</h2>
         <div class="space-y-3">
@@ -47,7 +46,6 @@
         </div>
       </section>
 
-      <!-- 2 -->
       <section class="bg-white rounded-2xl shadow p-5 xl:col-span-1">
         <h2 class="font-semibold mb-3">2) Модель и GPU-парк</h2>
         <div class="space-y-3">
@@ -99,7 +97,6 @@
         </div>
       </section>
 
-      <!-- 3 -->
       <section class="bg-white rounded-2xl shadow p-5 xl:col-span-1">
         <h2 class="font-semibold mb-3">3) Базовые ресурсы</h2>
         <div class="space-y-3">
@@ -152,7 +149,6 @@
       </section>
     </div>
 
-    <!-- Результаты -->
     <section class="mt-6 bg-white rounded-2xl shadow p-5">
       <h2 class="font-semibold mb-4">Результаты</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -178,44 +174,42 @@
       </div>
     </section>
 
-    <!-- Пояснение (всегда видно) -->
     <section class="mt-6 bg-white rounded-2xl shadow p-5">
       <h2 class="font-semibold mb-2">Пояснение расчёта</h2>
       <pre id="explainText" class="whitespace-pre-wrap text-sm leading-relaxed"></pre>
     </section>
 
     <footer class="mt-6 text-xs text-slate-500">
-      Эта сборка: v7 · 2025-09-01 10:40. Подсказка: значения можно вводить с запятой или точкой.
+      Эта сборка: v8 · 2025-09-01 10:50. Подсказка: значения можно вводить с запятой или точкой.
     </footer>
   </div>
 
 <script>
-const modelPresets={{"7b":{{"paramsB":7,"L":32,"d":4096,"tok16":35}},"13b":{{"paramsB":13,"L":80,"d":5120,"tok16":25}},"34b":{{"paramsB":34,"L":96,"d":8192,"tok16":18}},"70b":{{"paramsB":70,"L":80,"d":12288,"tok16":12}}}};
-const complexity={{"chat":{{"steps":0,"sys":100,"user":100,"per_step":0,"final":150}},"agent2":{{"steps":2,"sys":200,"user":100,"per_step":480,"final":200}},"agent5":{{"steps":5,"sys":250,"user":120,"per_step":500,"final":220}}}};
-const gpuPerfMult={{"A100_80":1.0,"H100_80":1.8}};
-const gpuMemCap={{"A100_80":80,"H100_80":80}};
+const modelPresets={'7b':{paramsB:7,L:32,d:4096,tok16:35},'13b':{paramsB:13,L:80,d:5120,tok16:25},'34b':{paramsB:34,L:96,d:8192,tok16:18},'70b':{paramsB:70,L:80,d:12288,tok16:12}};
+const complexity={chat:{steps:0,sys:100,user:100,per_step:0,final:150},agent2:{steps:2,sys:200,user:100,per_step:480,final:200},agent5:{steps:5,sys:250,user:120,per_step:500,final:220}};
+const gpuPerfMult={'A100_80':1.0,'H100_80':1.8};
+const gpuMemCap={'A100_80':80,'H100_80':80};
 
-function perfFromPreset(preset, quant, gpuModel, perfPreset){{
+function perfFromPreset(preset, quant, gpuModel, perfPreset){
   const quantMult = quant==='fp16'?1:(quant==='int8'?1.5:2.0);
   const base = preset.tok16 * quantMult;
   const gpuMult = gpuPerfMult[gpuModel] || 1;
   const perfMult = (perfPreset==='opt')? (1.6/1.2) : 1;
   return base * gpuMult * perfMult;
-}}
-function bytesPerParam(quant){{return quant==='fp16'?2:(quant==='int8'?1:0.5);}}
-function bytesKV(){{return 2;}}
+}
+function bytesPerParam(quant){return quant==='fp16'?2:(quant==='int8'?1:0.5);} 
+function bytesKV(){return 2;}
 
-function val(id){{return document.getElementById(id).value;}}
-function num(id){{const v=val(id).trim().replace(',','.');return v===''?NaN:Number(v);}}
-function fmt(n,d=0){{if(!isFinite(n))return'—';return Number(n).toLocaleString('ru-RU',{{maximumFractionDigits:d,minimumFractionDigits:d}});}}
+function val(id){return document.getElementById(id).value;} 
+function num(id){const v=val(id).trim().replace(',','.');return v===''?NaN:Number(v);} 
+function fmt(n,d=0){if(!isFinite(n))return'—';return Number(n).toLocaleString('ru-RU',{maximumFractionDigits:d,minimumFractionDigits:d});}
 
-function syncGpuMemCap(){{
-  const m=val('gpu_model'); const cap=gpuMemCap[m];
-  const sel=document.getElementById('gpu_mem_cap');
-  for(let i=0;i<sel.options.length;i++){{ if(Number(sel.options[i].value)===cap){{ sel.selectedIndex=i; break; }} }}
-}}
+function syncGpuMemCap(){
+  const m=val('gpu_model');const cap=gpuMemCap[m];const sel=document.getElementById('gpu_mem_cap');
+  for(let i=0;i<sel.options.length;i++){if(Number(sel.options[i].value)===cap){sel.selectedIndex=i;break;}}
+}
 
-function compute(){{
+function compute(){
   const cx=complexity[val('preset_complexity')]; const steps=cx.steps,t_sys=cx.sys,t_user=cx.user,per_step=cx.per_step,t_final=cx.final;
   const concurrency=num('concurrency'), latency=num('latency'); const rps=concurrency/latency;
   const t_task=t_sys+t_user+steps*per_step+t_final; const tps_needed=rps*t_task;
@@ -242,12 +236,12 @@ function compute(){{
   const gpu_price=Number(num('gpu_price')||0); const server_price=Number(num('server_price')||0);
   const cost_gpu_hour=gpu_needed*gpu_price; const cost_srv_hour=servers_needed*server_price; const cost_total_hour=cost_gpu_hour+cost_srv_hour;
 
-  return {{steps,t_sys,t_user,per_step,t_final,concurrency,latency,rps,t_task,tps_needed,mp,quant,seq_len,batch,gpuModel,perfPreset,tok_per_gpu,
+  return {steps,t_sys,t_user,per_step,t_final,concurrency,latency,rps,t_task,tps_needed,mp,quant,seq_len,batch,gpuModel,perfPreset,tok_per_gpu,
           vram_weights,vram_kv,vram_total,cap,fit,gpu_needed,gpu_have,cpu_total,ram_total,rag_enabled,rag_index_gb,rag_net_mbps,disk_total,
-          gpus_per_server,servers_needed,cost_gpu_hour,cost_srv_hour,cost_total_hour}};
-}}
+          gpus_per_server,servers_needed,cost_gpu_hour,cost_srv_hour,cost_total_hour};
+}
 
-function render(){{
+function render(){
   const v=compute();
   document.getElementById('t_task_out').textContent=fmt(v.t_task,0);
   document.getElementById('rps_out').textContent=fmt(v.rps,2);
@@ -266,9 +260,9 @@ function render(){{
   document.getElementById('costs_hour').textContent=fmt(v.cost_total_hour,2);
   const fitBox=document.getElementById('fit_flag').parentElement; fitBox.classList.remove('bg-rose-100','bg-emerald-100'); fitBox.classList.add(v.fit==='Да'?'bg-emerald-100':'bg-rose-100');
   document.getElementById('explainText').textContent=explanationText(v);
-}}
+}
 
-function explanationText(v){{
+function explanationText(v){
   const a=[];
   a.push('Нагрузка: RPS = пользователи / время = '+v.concurrency+' / '+v.latency+' = '+v.rps.toFixed(2)+' задач/сек.');
   a.push('Токены на задачу (по профилю) ≈ '+Math.round(v.t_task)+'. Поток = RPS × токены = '+Math.round(v.tps_needed)+' ток/сек.'); a.push('');
@@ -281,9 +275,9 @@ function explanationText(v){{
   a.push('Бюджет/час: GPU ~ '+v.cost_gpu_hour.toFixed(2)+' $ + серверы ~ '+v.cost_srv_hour.toFixed(2)+' $ = '+v.cost_total_hour.toFixed(2)+' $.');
   a.push('Рычаги: уменьшить контекст; кэшировать; квантовать сильнее; улучшить batching/serving; сократить шаги агента.');
   return a.join('\n');
-}}
-document.getElementById('gpu_model').addEventListener('change',function(){{syncGpuMemCap();render();}});
-document.querySelectorAll('input,select').forEach(function(el){{el.addEventListener('input',render);}});
+}
+document.getElementById('gpu_model').addEventListener('change',()=>{syncGpuMemCap();render();});
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',render));
 syncGpuMemCap(); render();
 </script>
 </body>
